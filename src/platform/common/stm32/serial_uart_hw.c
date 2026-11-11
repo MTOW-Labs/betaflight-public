@@ -144,6 +144,12 @@ uartPort_t *serialUART(uartDevice_t *uartdev, uint32_t baudRate, portMode_e mode
 
 // Note: F4 did not check txIO before refactoring
     if ((options & SERIAL_BIDIR) && txIO) {
+        IOInit(txIO, ownerTxRx, ownerIndex);
+#if defined(UM324xF)
+        // The dual-pad driver applies the idle pull in uartReconfigure() and
+        // enables the TX alternate function only while transmitting.
+        IOConfigGPIO(txIO, IOCFG_IN_FLOATING);
+#else
         // pushPull / openDrain
         const bool pushPull = serialOptions_pushPull(options);
         // pull direction
@@ -185,17 +191,9 @@ uartPort_t *serialUART(uartDevice_t *uartdev, uint32_t baudRate, portMode_e mode
             pushPull ? GPIO_OTYPE_PP : GPIO_OTYPE_OD,
             ((const unsigned[]){GPIO_PUPD_NONE, GPIO_PUPD_PULLDOWN, GPIO_PUPD_PULLUP})[pull]
         );
-#elif defined(UM324xF)
-        UNUSED(pull);
-        UNUSED(pushPull);
-        const ioConfig_t ioCfg = IO_CONFIG(
-            GPIO_MODE_AF,
-            GPIO_SPEED_FREQ_HIGH,  // TODO: should use stronger drive
-            ((const unsigned[]){GPIO_NOPULL, GPIO_PULLDOWN, GPIO_PULLUP})[pull]
-        );
 #endif
-        IOInit(txIO, ownerTxRx, ownerIndex);
         IOConfigGPIOAF(txIO, ioCfg, txAf);
+#endif
     } else {
         if ((mode & MODE_TX) && txIO) {
             IOInit(txIO, ownerTxRx, ownerIndex);
@@ -349,7 +347,7 @@ void uartEnableTxInterrupt(uartPort_t *uartPort)
 #if defined(USE_UART7) || defined(USE_UART8)
     if ((uartPort->USARTx == (usartResource_t *)USART7) || (uartPort->USARTx == (usartResource_t *)USART8)) {
         // SAM-style USART7/8: TXRDY interrupt, set-only via the IER register.
-        ((USART_TypeDef *)uartPort->USARTx)->IER |= USART_IER_TXRDY;
+        ((USART_TypeDef *)uartPort->USARTx)->IER = USART_IER_TXRDY;
     } else
 #endif
     {
